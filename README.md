@@ -46,7 +46,7 @@ There are some other useful metrics printed out at the end of simulation. <be>
 1. sudo apt update
 2. sudo add-apt-repository ppa:ubuntu-toolchain-r/test
 3. vim /etc/apt/sources.list or sudo nano /etc/apt/sources.list
-4. Update the last line with deb [arch=amd64] http://archive.ubuntu.com/ubuntu focal main universe
+4. Update the last line with "deb [arch=amd64] http://archive.ubuntu.com/ubuntu focal main universe"
 5. sudo add-apt-repository ppa:ubuntu-toolchain-r/test
 6. sudo apt-get install gcc-7
 7. sudo apt-get install g++-7
