@@ -8,12 +8,11 @@
 To makes things simper, you are only required to specify three parameters: L1D prefetcher, STLB prefetcher, and the number of cores. 
 For example, `./build_champsim.sh no` builds a single-core processor with no L2 data prefetcher .
 ```
-$ ./build_champsim.sh ip_stride 
+$ ./build_champsim.sh ip_stride  
 
 $ ./build_champsim.sh ${L2_PREFETCHER}
 ```
-
-In case you need to modify the other prefetchers, you can manually change it in `./build_champsim.sh`
+NOTE : For exclusive cache hierarchy use "build_champsim_exclusive.sh"
 
 # Run simulation
 
