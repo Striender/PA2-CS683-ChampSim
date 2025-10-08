@@ -1,0 +1,157 @@
+#include "cache.h"
+using namespace std;
+
+#define LOG2_L2C_INDEX 10
+#define SCOREMAX 31
+#define ROUNDMAX 100
+#define BADSCORE 1
+#define RR_TABLE_ENTRIES 256
+#define LOG2_RR_TABLE_SIZE 8
+
+#define EXTRACT_PAGE_ADDR(addr) ((addr) >> LOG2_PAGE_SIZE) /* Extract the page ID */
+#define EXTRACT_BLOCK_ADDR(addr) (((addr) >> LOG2_BLOCK_SIZE) & 0x3f)
+#define LINE_ADDR(addr) (addr >> LOG2_BLOCK_SIZE)
+
+struct RR_TABLE_ENTRY
+{
+    uint64_t tag;
+    uint8_t valid;
+};
+
+vector<int> offset_list;
+vector<int> offset_score;
+
+vector<RR_TABLE_ENTRY> RR_TABLE;
+
+uint64_t access_counter;
+
+int best_offset;
+bool prefetch_off;
+int round_counter;
+int best_score_in_phase;
+int best_offset_in_phase;
+
+uint64_t get_tag(uint64_t addr)
+{
+    return ((1LU << 19) - 1) & (addr >> (LOG2_BLOCK_SIZE + LOG2_L2C_INDEX));
+}
+
+uint64_t get_index(uint64_t addr)
+{
+    uint64_t line_addr = LINE_ADDR(addr);
+    uint64_t mask = (1LU << LOG2_RR_TABLE_SIZE) - 1;
+    uint64_t low = line_addr & mask;
+    uint64_t next = (line_addr >> LOG2_RR_TABLE_SIZE) & mask;
+    return low ^ next;
+}
+
+void insert_entry(uint64_t addr)
+{
+    // uint64_t page_id = EXTRACT_PAGE_ID(addr);
+    uint64_t index = get_index(addr);
+
+    assert(index < RR_TABLE_ENTRIES);
+
+    // prepare entry (use MSB as valid bit)
+    // get the tag bits
+    uint64_t tag = get_tag(addr); // 19 bits tag, 10 bits set index, 6 bits offset
+    assert(tag <= pow(2, 19));
+    // cout<<"TAG " << tag <<" index "<<index <<endl;
+    RR_TABLE[index] = RR_TABLE_ENTRY{tag, 1};
+}
+
+bool find_entry(uint64_t addr)
+{
+    if ((RR_TABLE[get_index(addr)].valid && RR_TABLE[get_index(addr)].tag == get_tag(addr)))
+    {
+        return true;
+    }
+    return false;
+}
+
+void round_runner(uint64_t addr)
+{
+    // cout << "Round: " << round_counter << " Access: " << access_counter << " Addr: " << addr << endl;
+    if (find_entry(addr - offset_list[access_counter]) && (EXTRACT_PAGE_ADDR(addr) == EXTRACT_PAGE_ADDR(addr - offset_list[access_counter])))
+    {
+        offset_score[access_counter]++;
+    }
+    if (offset_score[access_counter] > best_score_in_phase)
+    {
+        best_score_in_phase = offset_score[access_counter];
+        best_offset_in_phase = offset_list[access_counter];
+    }
+
+    access_counter++;
+
+    if (access_counter == (offset_list.size()))
+    {
+        access_counter = 0;
+        round_counter++;
+        // cout << "MAX score " <<  best_score_in_phase << " " << best_score_in_phase << endl;
+    }
+}
+
+void reset_learning_phase()
+{
+    // Reset all scores to 0 at the start of a new phase [cite: 150]
+    fill(offset_score.begin(), offset_score.end(), 0);
+    round_counter = 0;
+    best_score_in_phase = 0;
+    best_offset_in_phase = 1; // Default to next-line if no better is found
+    access_counter = 0;
+    RR_TABLE.resize(RR_TABLE_ENTRIES, {0, false});
+}
+
+void CACHE::l2c_prefetcher_initialize()
+{
+    cout << "CPU " << cpu << " Region based L2 offset prefetcher" << endl;
+    offset_list = {1, 2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 16, 18, 20, 24, 25, 27, 30, 32, 36, 40, 45,
+                   48, 50, 54, 60};
+
+    offset_score.resize(offset_list.size(), 0);
+
+    RR_TABLE.resize(RR_TABLE_ENTRIES, {0, false});
+
+    best_offset = 0; // starting with a default next-line offset
+    prefetch_off = false;
+
+    reset_learning_phase();
+}
+
+uint32_t CACHE::l2c_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit, uint8_t type, uint32_t metadata_in, uint8_t critical_ip_flag)
+{
+
+    if (cache_hit == 0)
+    {
+
+        uint64_t line_addr_to_check = LINE_ADDR(addr);
+        uint64_t check_addr = line_addr_to_check + offset_list[access_counter];
+
+        round_runner(addr);
+
+        if (round_counter == ROUNDMAX || best_score_in_phase == SCOREMAX)
+        {
+            best_offset = best_offset_in_phase;
+            reset_learning_phase();
+        }
+
+        uint64_t pf_address = (check_addr + best_offset) << LOG2_BLOCK_SIZE;
+
+        if ((MSHR.occupancy < (MSHR.SIZE >> 1)) && best_score_in_phase > BADSCORE)
+            prefetch_line(ip, addr, pf_address, FILL_L2, 0);
+        else if (best_score_in_phase > BADSCORE)
+            prefetch_line(ip, addr, pf_address, FILL_LLC, 0);
+    }
+    return metadata_in;
+}
+
+uint32_t CACHE::l2c_prefetcher_cache_fill(uint64_t addr, uint32_t set, uint32_t match, uint8_t prefetch, uint64_t evicted_addr, uint32_t metadata_in)
+{
+    insert_entry(addr - best_offset);
+    return metadata_in;
+}
+
+void CACHE::l2c_prefetcher_final_stats()
+{
+}

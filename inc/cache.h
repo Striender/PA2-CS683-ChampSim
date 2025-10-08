@@ -107,6 +107,8 @@ extern uint32_t PAGE_TABLE_LATENCY, SWAP_LATENCY;
 #define LLC_MSHR_SIZE NUM_CPUS*64
 #define LLC_LATENCY 20  // 5 (L1I or L1D) + 10 + 20 = 35 cycles
 
+
+
 class CACHE : public MEMORY {
   public:
     uint32_t cpu;
@@ -119,6 +121,7 @@ class CACHE : public MEMORY {
     uint32_t reads_available_this_cycle;
     uint8_t cache_type;
 
+    
     // prefetch stats
     uint64_t pf_requested,
              pf_issued,

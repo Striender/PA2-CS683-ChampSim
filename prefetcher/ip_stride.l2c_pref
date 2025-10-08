@@ -51,6 +51,8 @@ void CACHE::l2c_prefetcher_initialize()
 
 uint32_t CACHE::l2c_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit, uint8_t type, uint32_t metadata_in, uint8_t critical_ip_flag)
 {
+   
+
     // check for a tracker hit
     uint64_t cl_addr = addr >> LOG2_BLOCK_SIZE;
 
@@ -88,9 +90,9 @@ uint32_t CACHE::l2c_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache
     if (index == -1)
         assert(0);
 
-    // calculate the stride between the current address and the last address
+   // calculate the stride between the current address and the last address
     // this bit appears overly complicated because we're calculating
-    // differences between unsigned address variables
+    // differences between unsigned address variables 
     int64_t stride = 0;
     if (cl_addr > trackers[index].last_cl_addr)
         stride = cl_addr - trackers[index].last_cl_addr;

@@ -1,0 +1,5 @@
+Binary,Trace,IPC,Total_Access,Total_Hits,Total_Misses,Total_MPKI,Load_Access,Load_Hit,Load_Miss,Load_MPKI,Data_Load_MPKI,Prefetch_Requested,Prefetch_Issued,Prefetch_Useful,Prefetch_Useless,Useful_Load_Prefetches,Timely_Prefetches,Late_Prefetches,Dropped_Prefetches,Average_Miss_Latency
+champsim-offset_prefetcher,trace1.champsimtrace.xz,0.55039,,,,,,,,,,,,,,,,,,
+champsim-offset_prefetcher,trace2.champsimtrace.xz,0.480775,,,,,,,,,,,,,,,,,,
+champsim-offset_prefetcher,trace3.champsimtrace.xz,0.871508,,,,,,,,,,,,,,,,,,
+champsim-offset_prefetcher,trace4.champsimtrace.xz,0.482428,,,,,,,,,,,,,,,,,,

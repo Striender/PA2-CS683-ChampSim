@@ -1,22 +1,308 @@
 #include "cache.h"
 
+#define PAGE_TRACKER_TABLE_SIZE 2048
+#define MAX_OFFSETS_PER_PAGE 5
+#define PREFETCH_METADATA_TAG (1 << 30)
 
-void CACHE::l2c_prefetcher_initialize() 
+int prefetch_degree = 1 ;
+
+struct Offset_Frequency
 {
-    cout << "CPU " << cpu << " Region based L2 offset prefetcher" << endl;
+    int stride;
+    uint32_t frequency;
+};
+
+struct Page_access_tracker
+{
+    bool valid;
+    uint64_t page_addr_tag;
+    uint64_t last_accessed_addr;
+    int64_t best_offset;
+
+    Offset_Frequency offsets[MAX_OFFSETS_PER_PAGE]; 
+
+    // for Prefetcher accuracy
+    uint32_t prefetches_issued;
+    uint32_t prefetches_useful;
+
+    // Counter for the LRU replacement policy
+    uint32_t lru_counter;
+};
+
+Page_access_tracker PageTrackerTable[PAGE_TRACKER_TABLE_SIZE];
+
+int get_victim(){
+    int max = -1 ; 
+    int max_index ; 
+    for(int i=0; i<PAGE_TRACKER_TABLE_SIZE; ++i){
+        if(PageTrackerTable[i].lru_counter > max){
+            max = PageTrackerTable[i].lru_counter;
+            max_index = i ; 
+        }
+    }
+     return max_index ;
 }
 
-uint32_t CACHE::l2c_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit, uint8_t type, uint32_t metadata_in, uint8_t critical_ip_flag)
+void reset (int victim_index){
+
+    PageTrackerTable[victim_index].valid = true;
+    PageTrackerTable[victim_index].prefetches_issued = 0;
+    PageTrackerTable[victim_index].prefetches_useful = 0;
+
+    for (int j = 0; j < MAX_OFFSETS_PER_PAGE ; ++j)
+    {
+        PageTrackerTable[victim_index].offsets[j].stride = 0;
+        PageTrackerTable[victim_index].offsets[j].frequency = 0;
+    }
+}
+
+bool check_offset_present(int64_t offset , int idx) {
+    for(int i=0; i<MAX_OFFSETS_PER_PAGE; i++){
+        if(PageTrackerTable[idx].offsets[i].stride == offset ){
+            PageTrackerTable[idx].offsets[i].frequency ++;
+            return true;
+        }
+    }
+    return false ;
+}
+
+int find_least_used_offset(int page_addr){
+    int min = PageTrackerTable[page_addr].offsets[0].frequency;
+    int idx;
+    for(int i=0; i<MAX_OFFSETS_PER_PAGE ; i++){
+        if(PageTrackerTable[page_addr].offsets[i].frequency < min ){
+            idx = i ;
+            min = PageTrackerTable[page_addr].offsets[i].frequency ;
+        }
+    }
+    return idx ; 
+}
+
+void keep_new_offset(int offset, int page_idx)
 {
-   
+    // check wheather we have MAX_OFFSETS_PER_PAGE offset or not {is there a need evict any offset }
+    for(int i=0 ; i<MAX_OFFSETS_PER_PAGE ; i++){
+        if(PageTrackerTable[page_idx].offsets[i].frequency == 0 ){
+            PageTrackerTable[page_idx].offsets[i].stride = offset ;
+            PageTrackerTable[page_idx].offsets[i].frequency = 1 ; 
+            return ; 
+        }
+    }
+
+    //if we reached here that means we have MAX_OFFSETS_PER_PAGE offset already so we need to evict least used offset
+
+    int offset_idx = find_least_used_offset(page_idx);
+    PageTrackerTable[page_idx].offsets[offset_idx].stride = offset;
+    PageTrackerTable[page_idx].offsets[offset_idx].frequency = 1;
+}
+
+void check_accuracy_and_adpat(int tracker_index){
+    double accuracy = (double)PageTrackerTable[tracker_index].prefetches_useful / PageTrackerTable[tracker_index].prefetches_issued;
+    if (accuracy > 0.7)
+    {
+        prefetch_degree = 3; // High accuracy -> aggressive
+    }
+    else if (accuracy > 0.4)
+    {
+        prefetch_degree = 2; // Medium accuracy -> moderate
+    }
+   /* else if (accuracy > 0.7 )
+    {
+        prefetch_degree = 8 ; // Low accuracy -> conservative
+    }
+    else if(accuracy > 0.6)
+    {
+        prefetch_degree = 7 ; 
+    }
+    else if (accuracy > 0.5)
+    {
+        prefetch_degree = 6;
+    }
+    else if (accuracy > 0.4)
+    {
+        prefetch_degree = 5;
+    }
+    else if (accuracy > 0.3)
+    {
+        prefetch_degree = 4;
+    }
+    else if (accuracy > 0.2)
+    {
+        prefetch_degree = 3;
+    }
+    else if (accuracy > 0.1)
+    {
+        prefetch_degree = 2;
+    }*/
+    else
+    {
+        prefetch_degree = 1 ; 
+    }
+}
+
+void get_best_offset(int tracker_index){
+    // Initialize both max_freq AND best_offset before the loop
+    uint32_t max_freq = PageTrackerTable[tracker_index].offsets[0].frequency;
+    PageTrackerTable[tracker_index].best_offset = PageTrackerTable[tracker_index].offsets[0].stride;
+
+    for (int i = 1; i < MAX_OFFSETS_PER_PAGE; ++i)
+    {
+        if (PageTrackerTable[tracker_index].offsets[i].frequency > max_freq)
+        {
+            max_freq = PageTrackerTable[tracker_index].offsets[i].frequency;
+            PageTrackerTable[tracker_index].best_offset = PageTrackerTable[tracker_index].offsets[i].stride;
+        }
+    }
+}
+
+    void CACHE::l2c_prefetcher_initialize()
+{
+    cout << "CPU " << cpu << " Region based L2 offset prefetcher" << endl;
+
+    for (int i = 0; i < PAGE_TRACKER_TABLE_SIZE; ++i)
+    {
+        PageTrackerTable[i].valid = false;
+        PageTrackerTable[i].page_addr_tag = 0;
+        PageTrackerTable[i].last_accessed_addr = 0;
+        PageTrackerTable[i].best_offset = 1;
+        PageTrackerTable[i].prefetches_issued = 0;
+        PageTrackerTable[i].prefetches_useful = 0;
+        PageTrackerTable[i].lru_counter = i; // Sets up a simple initial eviction order.
+
+        for (int j = 0; j < MAX_OFFSETS_PER_PAGE; ++j)
+        {
+            PageTrackerTable[i].offsets[j].stride = 0;
+            PageTrackerTable[i].offsets[j].frequency = 0;
+        }
+    }
+    
+}
+
+uint32_t CACHE::l2c_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit, uint8_t type, uint32_t metadata_in, uint8_t critical_ip_flag){
+    uint64_t current_page_address = addr >> LOG2_PAGE_SIZE;
+
+    int tracker_index = -1;
+     
+
+    for(int i=0; i<PAGE_TRACKER_TABLE_SIZE; ++i){
+        if(PageTrackerTable[i].valid && PageTrackerTable[i].page_addr_tag == current_page_address ){
+            tracker_index = i;
+            break;
+        }
+    }
+
+    if (tracker_index == -1)
+    {
+        // Find a victim entry to replace using the LRU policy.
+        for (int i = 0; i < PAGE_TRACKER_TABLE_SIZE; ++i)
+        {
+            if (PageTrackerTable[i].lru_counter == (PAGE_TRACKER_TABLE_SIZE - 1))
+            {
+                tracker_index = i;
+                break;
+            }
+        }
+
+        //Reset and initialize the victim entry for the new page.
+        PageTrackerTable[tracker_index].page_addr_tag = current_page_address;
+        PageTrackerTable[tracker_index].last_accessed_addr = addr;
+        reset(tracker_index);
+
+    }else{ // handle a hit
+        int64_t offset = addr - PageTrackerTable[tracker_index].last_accessed_addr;
+
+        if (offset == 0)
+            return metadata_in;
+        if(offset != 0 )
+        {   // checking if the offset is present or not
+            // if present we will just increment the frequency of particular offset and return TRUE
+            // if it is not present check_offset_present will return FALSE and we have tackle the new offset
+            if (!check_offset_present(offset, tracker_index)){ 
+                keep_new_offset(offset, tracker_index);
+            }
+
+            //Determine prefetch degree based on historical accuracy
+            if (PageTrackerTable[tracker_index].prefetches_issued > 10)
+            {
+                check_accuracy_and_adpat(tracker_index);
+            }
+
+            // with this funtion we will get our best performing offset 
+            get_best_offset(tracker_index);
+
+            // C. Issue prefetches if the best offset seems valid.
+            if (PageTrackerTable[tracker_index].best_offset != 0)
+            {
+                for (int i = 1; i <= prefetch_degree; ++i)
+                {
+                    uint64_t prefetch_address = addr + (PageTrackerTable[tracker_index].best_offset * i);
+
+                    // CRITICAL: Ensure prefetch is within the same page.
+                    if ((prefetch_address >> LOG2_PAGE_SIZE) != addr >> LOG2_PAGE_SIZE)
+                    {
+                        break; // Stop if we cross a page boundary.
+                    }
+
+                    // Issue the prefetch with our special metadata tag.
+                    if (MSHR.occupancy < (MSHR.SIZE >> 1))
+                        prefetch_line(ip, addr, prefetch_address, FILL_L2, PREFETCH_METADATA_TAG);
+                    else
+                        prefetch_line(ip, addr, prefetch_address, FILL_LLC, PREFETCH_METADATA_TAG);
+
+                    PageTrackerTable[tracker_index].prefetches_issued++;
+                }
+            }
+        }
+
+
+        // Update the last address for this page to be ready for the next access.
+        PageTrackerTable[tracker_index].last_accessed_addr = addr;
+    }
+
+    // Update LRU counters for all entries to maintain recency information.
+    uint32_t current_lru = PageTrackerTable[tracker_index].lru_counter;
+
+    for (int i = 0; i < PAGE_TRACKER_TABLE_SIZE; ++i)
+    {
+        if (PageTrackerTable[i].lru_counter < current_lru)
+        {
+            PageTrackerTable[i].lru_counter++;
+        }
+    }
+    /*for(int i=0 ; i<MAX_OFFSETS_PER_PAGE ; i++){
+        cout << "Offest of " << PageTrackerTable[tracker_index].page_addr_tag << " and its offset  " << PageTrackerTable[tracker_index].offsets[i].stride<< " with frequency  " << PageTrackerTable[tracker_index].offsets[i].frequency << endl;
+    }*/
+        PageTrackerTable[tracker_index].lru_counter = 0;
+
+
+    return metadata_in;
 }
 
 uint32_t CACHE::l2c_prefetcher_cache_fill(uint64_t addr, uint32_t set, uint32_t match, uint8_t prefetch, uint64_t evicted_addr, uint32_t metadata_in)
 {
-  return metadata_in;
+    // Check if this fill is for a DEMAND access that HIT a line WE prefetched.
+   
+     // This is now the most recently used
+    //cout << "\n Best prefectcher used " << PageTrackerTable[tracker_index].best_offset << endl;
+    //cout << "-------------------------------------------------------------------------------------------------------" <<endl ;
+
+    if (!prefetch && (metadata_in & PREFETCH_METADATA_TAG))
+    {
+        // This was a useful prefetch. Find its tracker and increment the counter.
+        uint64_t page_address = addr >> LOG2_PAGE_SIZE;
+        for (int i = 0; i < PAGE_TRACKER_TABLE_SIZE; ++i)
+        {
+            if (PageTrackerTable[i].valid && PageTrackerTable[i].page_addr_tag == page_address)
+            {
+                PageTrackerTable[i].prefetches_useful++;
+                break;
+            }
+        }
+    }
+    // Return the original metadata, as we don't need to change it.
+    return metadata_in;
 }
 
 void CACHE::l2c_prefetcher_final_stats()
 {
-
 }

@@ -315,8 +315,67 @@ void CACHE::handle_fill()
 
 #ifdef PUSH_DTLB_PB
             if ( (cache_type!=IS_DTLB) || (cache_type==IS_DTLB && MSHR.entry[mshr_index].type != PREFETCH_TRANSLATION) )
-#endif	
+#endif
+             //   ((CACHE *)upper_level_dcache)->invalidate_entry(MSHR.entry[mshr_index].address);
+             printf("GOT REQ FOR:: %d\n",cache_type );
+             if(cache_type==4)
+             {
+                     invalidate_entry(MSHR.entry[mshr_index].address);//for L1D
+                     CACHE *lower = (CACHE *)lower_level;
+                     printf("ONE LEVEL DOWN: %d\n", lower->cache_type);
+                     lower->invalidate_entry(MSHR.entry[mshr_index].address);//L2
+                         
+                     CACHE *lower1 = (CACHE *)lower->lower_level;
+                     printf("TWO LEVEL DOWN: %d\n", lower1->cache_type);
+                     lower1->invalidate_entry(MSHR.entry[mshr_index].address);//LLC
+             }
+             else if (cache_type == 5)
+             {
+                 invalidate_entry(MSHR.entry[mshr_index].address); // for L2
+                 CACHE *lower = (CACHE *)lower_level;
+                 printf("ONE LEVEL DOWN: %d\n", lower->cache_type);
+                 lower->invalidate_entry(MSHR.entry[mshr_index].address); // LLC
+
+                
+             }
                 fill_cache(set, way, &MSHR.entry[mshr_index]);
+
+                if(cache_type==4)
+                {
+                    int hitchec = check_hit(&MSHR.entry[mshr_index]);
+                    if (hitchec >= 0)
+                        printf("HIT ONLY HERE\n");
+
+                    CACHE *lower = (CACHE *)lower_level;
+                    int che = lower->check_hit(&MSHR.entry[mshr_index]);
+                    if(che>=0)
+                    {
+                        printf("YOU SUCK at %d",lower->cache_type);
+                        assert(0);
+                    }
+
+                    CACHE *lower1 = (CACHE *)lower->lower_level;
+                    che = lower1->check_hit(&MSHR.entry[mshr_index]);
+                    if (che >= 0)
+                    {
+                        printf("YOU SUCK at %d", lower1->cache_type);
+                        assert(0);
+                    }
+                }
+                if(cache_type==5)
+                {
+                    int hitchec = check_hit(&MSHR.entry[mshr_index]);
+                    if (hitchec >= 0)
+                     printf("HIT ONLY HERE\n");
+
+                    CACHE *lower = (CACHE *)lower_level;
+                    int che = lower->check_hit(&MSHR.entry[mshr_index]);
+                    if (che >= 0)
+                    {
+                        printf("YOU SUCK at %d", lower->cache_type);
+                        assert(0);
+                    }
+                }
 #ifdef PUSH_DTLB_PB
             else if (cache_type == IS_DTLB && MSHR.entry[mshr_index].type == PREFETCH_TRANSLATION)
             {
@@ -786,7 +845,76 @@ if (writeback_cpu == NUM_CPUS)
                     sim_miss[writeback_cpu][WQ.entry[index].type]++;
                     sim_access[writeback_cpu][WQ.entry[index].type]++;
 
+                  //  ((CACHE *)upper_level_dcache)->invalidate_entry(WQ.entry[index].address);
+                
+                    //    printf("INVALIDATED AT:%s", upper_level_dcache.cache_type);
+                    //   lower_level = ((CACHE *)upper_level_dcache)->lower_level;
+
+                    //    while (lower_level)
+                    //    {
+                    //        printf("foo\n");
+                    //       ((CACHE *)lower_level)->invalidate_entry(WQ.entry[index].address);
+                    //     printf("INVALIDATED AT:%s", ((CACHE *)lower_level).cache_type);
+                    //     lower_level = lower_level->lower_level;
+                    //  }
+                    printf("GOT REQ FOR:: %d\n", cache_type);
+                    if (cache_type == 4)
+                    {
+                        invalidate_entry(WQ.entry[index].address); // for L1D
+                        CACHE *lower = (CACHE *)lower_level;
+                        printf("ONE LEVEL DOWN: %d level\n", lower->cache_type);
+                        lower->invalidate_entry(WQ.entry[index].address); // L2
+
+                        CACHE *lower1 = (CACHE *)lower->lower_level;
+                        printf("TWO LEVEL DOWN: %d\n", lower1->cache_type);
+                        lower1->invalidate_entry(WQ.entry[index].address); // LLC
+                    }
+                    else if (cache_type == 5)
+                    {
+                        invalidate_entry(WQ.entry[index].address); // for L2
+                        CACHE *lower = (CACHE *)lower_level;
+                        printf("ONE LEVEL DOWN: %d\n", lower->cache_type);
+                        lower->invalidate_entry(WQ.entry[index].address); // LLC
+                    }
                     fill_cache(set, way, &WQ.entry[index]);
+                    
+                    if (cache_type == 4)
+                    {
+                        int hitcheck = check_hit(&WQ.entry[index]);
+                        if (hitcheck >= 0)
+                        printf("HIT ONLY HERE\n");
+
+
+                        CACHE *lower = (CACHE *)lower_level;
+                        int ch = lower->check_hit(&WQ.entry[index]);
+                        if (ch >= 0)
+                        {
+                            printf("YOU SUCK at %d", lower->cache_type);//CHECL FOR L2
+                            assert(0);
+                        }
+
+                        CACHE *lower1 = (CACHE *)lower->lower_level;
+                         ch = lower1->check_hit(&WQ.entry[index]);
+                        if (ch >= 0)
+                        {
+                            printf("YOU SUCK at %d", lower1->cache_type);//checl for LLC
+                            assert(0);
+                        }
+                    }
+                    if (cache_type == 5)
+                    {
+                        int hitcheck = check_hit(&WQ.entry[index]);
+                        if (hitcheck >= 0)
+                        printf("HIT ONLY HERE\n");
+
+                        CACHE *lower = (CACHE *)lower_level;
+                        int ch = lower->check_hit(&WQ.entry[index]);
+                        if (ch>= 0)
+                        {
+                            printf("YOU SUCK at %d", lower->cache_type);//CHECK LLC
+                            assert(0);
+                        }
+                    }
 
                     // mark dirty
                     block[set][way].dirty = 1; 
@@ -1504,6 +1632,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
 
                                 add_nonfifo_queue(&MSHR, &new_packet); //@Vishal: Updated from add_mshr
                                 lower_level->add_rq(&new_packet);
+                                
                             }
                             else
                             {

@@ -1,2 +1,13 @@
+# Compiled output
 bin/
-obj/*
+obj/
+
+# Python virtual environment
+myenv/
+
+# Trace files and folder to ignore
+trace/
+*.trace
+
+# Editor configuration
+.vscode/
