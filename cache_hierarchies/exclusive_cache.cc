@@ -309,7 +309,7 @@ void CACHE::handle_fill()
             if ((cache_type != IS_DTLB) || (cache_type == IS_DTLB && MSHR.entry[mshr_index].type != PREFETCH_TRANSLATION))
 #endif
                 //   ((CACHE *)upper_level_dcache)->invalidate_entry(MSHR.entry[mshr_index].address);
-                printf("GOT REQ FOR:: %d\n", cache_type);
+                // printf("GOT REQ FOR:: %d\n", cache_type);
             //  if(cache_type==4)
             //  {
             //          invalidate_entry(MSHR.entry[mshr_index].address);//for L1D
@@ -871,7 +871,7 @@ void CACHE::handle_writeback()
                     //     printf("INVALIDATED AT:%s", ((CACHE *)lower_level).cache_type);
                     //     lower_level = lower_level->lower_level;
                     //  }
-                    printf("GOT REQ FOR:: %d\n", cache_type);
+                    // printf("GOT REQ FOR:: %d\n", cache_type);
                     // if (cache_type == 4)
                     // {
                     //     invalidate_entry(WQ.entry[index].address); // for L1D
