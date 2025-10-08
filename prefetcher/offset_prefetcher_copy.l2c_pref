@@ -1,27 +1,15 @@
-//
-// DPC2: Region-Based Offset Prefetcher (Improved and Refactored)
-//
 #include "cache.h"
 #include <vector>
 
-//================================================================================
-// Constants and Definitions
-//================================================================================
-#define PAGE_TRACKER_TABLE_SIZE 256
+#define PAGE_TRACKER_TABLE_SIZE 32
 #define MAX_OFFSETS_PER_PAGE 5
 #define PREFETCH_METADATA_TAG (1 << 30)
 
-// A lookahead distance to combat prefetch lateness. Instead of fetching the
-// very next line, we fetch lines that are further ahead in the stream.
-#define PREFETCH_DISTANCE 20
 
 
-//================================================================================
-// Data Structures
-//================================================================================
+
 struct OffsetFrequency
 {
-    // CORRECTED: Use int64_t to prevent overflow with large address differences.
     int64_t offset_value;
     uint32_t frequency;
 };
@@ -40,14 +28,9 @@ struct PageAccessTracker
     uint32_t lru_counter;
 };
 
-//================================================================================
-// Global Variables
-//================================================================================
+
 PageAccessTracker PageTrackerTable[PAGE_TRACKER_TABLE_SIZE];
 
-//================================================================================
-// Prefetcher Functions
-//================================================================================
 void CACHE::l2c_prefetcher_initialize()
 {
     cout << "CPU " << cpu << " L2C Region-Based Offset Prefetcher (Improved) initialized." << endl;
@@ -147,13 +130,45 @@ uint32_t CACHE::l2c_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache
             if (tracker.prefetches_issued > 20)
             { // Increased warm-up period for more stable accuracy.
                 double accuracy = (double)tracker.prefetches_useful / tracker.prefetches_issued;
-                if (accuracy > 0.8)
+                if (accuracy > 0.9)
                 {
-                    prefetch_degree = 4; // Be more aggressive to combat lateness.
+                    prefetch_degree = 10; // High accuracy -> aggressive
                 }
-                else if (accuracy > 0.5)
+                else if (accuracy > 0.8)
                 {
-                    prefetch_degree = 2;
+                    prefetch_degree = 9; // Medium accuracy -> moderate
+                }
+                 else if (accuracy > 0.7 )
+                 {
+                     prefetch_degree = 8 ; // Low accuracy -> conservative
+                 }
+                 else if(accuracy > 0.6)
+                 {
+                     prefetch_degree = 7 ;
+                 }
+                 else if (accuracy > 0.5)
+                 {
+                     prefetch_degree = 6;
+                 }
+                 else if (accuracy > 0.4)
+                 {
+                     prefetch_degree = 5;
+                 }
+                 else if (accuracy > 0.3)
+                 {
+                     prefetch_degree = 4;
+                 }
+                 else if (accuracy > 0.2)
+                 {
+                     prefetch_degree = 3;
+                 }
+                 else if (accuracy > 0.1)
+                 {
+                     prefetch_degree = 2;
+                 }
+                else
+                {
+                    prefetch_degree = 1;
                 }
             }
 
@@ -175,7 +190,7 @@ uint32_t CACHE::l2c_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache
                 for (int i = 1; i <= prefetch_degree; ++i)
                 {
                     // IMPROVEMENT: Add PREFETCH_DISTANCE to the calculation to look further ahead.
-                    uint64_t prefetch_address = addr + (best_offset * (i + PREFETCH_DISTANCE));
+                    uint64_t prefetch_address = addr + (best_offset * i );
                     if ((prefetch_address >> LOG2_PAGE_SIZE) != current_page_address)
                     {
                         break;
