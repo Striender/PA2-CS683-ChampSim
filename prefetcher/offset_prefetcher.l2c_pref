@@ -111,7 +111,7 @@ uint32_t CACHE::l2c_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache
                     offset_found = true;
                     break;
                 }
-                // Correctly find the least-frequent entry for eviction.
+                // find the least-frequent entry for eviction.
                 if (tracker.offsets[i].frequency < min_freq)
                 {
                     min_freq = tracker.offsets[i].frequency;
@@ -125,7 +125,7 @@ uint32_t CACHE::l2c_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache
                 tracker.offsets[min_freq_index].frequency = 1;
             }
 
-            // --- Accuracy and Adaptation Logic (Tuned for better performance) ---
+            // --- Accuracy and Adaptation Logic ---
             int prefetch_degree = 1;
             if (tracker.prefetches_issued > 20)
             { // Increased warm-up period for more stable accuracy.
@@ -145,7 +145,6 @@ uint32_t CACHE::l2c_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache
             }
 
             // --- Find Best Offset and Prefetch ---
-            // This is now a local variable, preventing stale data bugs.
             int64_t best_offset = tracker.offsets[0].offset_value;
             uint32_t max_freq = tracker.offsets[0].frequency;
             for (int i = 1; i < MAX_OFFSETS_PER_PAGE; ++i)
@@ -197,7 +196,6 @@ uint32_t CACHE::l2c_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache
 
 uint32_t CACHE::l2c_prefetcher_cache_fill(uint64_t addr, uint32_t set, uint32_t match, uint8_t prefetch, uint64_t evicted_addr, uint32_t metadata_in)
 {
-    // CORRECTED: The check for a useful prefetch is now working as intended.
     // It triggers only on a DEMAND access (!prefetch) that HITS a line with OUR tag.
     if (!prefetch && (metadata_in & PREFETCH_METADATA_TAG))
     {
