@@ -1,7 +1,7 @@
 #include "cache.h"
 #include <vector>
 
-#define PAGE_TRACKER_TABLE_SIZE 32
+#define PAGE_TRACKER_TABLE_SIZE 256
 #define MAX_OFFSETS_PER_PAGE 5
 #define PREFETCH_METADATA_TAG (1 << 30)
 
@@ -214,4 +214,6 @@ uint32_t CACHE::l2c_prefetcher_cache_fill(uint64_t addr, uint32_t set, uint32_t 
     return metadata_in;
 }
 
-void CACHE::l2c_prefetcher_final_stats() {}
+void CACHE::l2c_prefetcher_final_stats() {
+    
+}

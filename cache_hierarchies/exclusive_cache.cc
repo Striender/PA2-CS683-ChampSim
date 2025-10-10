@@ -187,9 +187,10 @@ void CACHE::handle_fill()
         }
 
         // is this dirty?
-        if (block[set][way].dirty)
+        
+        //SSSS
+        if (cache_type==IS_L1D||cache_type==IS_L2C || (cache_type==IS_LLC && block[set][way].dirty))
         {
-
             // check if the lower level WQ has enough room to keep this writeback request
             if (lower_level)
             {
@@ -308,8 +309,10 @@ void CACHE::handle_fill()
 #ifdef PUSH_DTLB_PB
             if ((cache_type != IS_DTLB) || (cache_type == IS_DTLB && MSHR.entry[mshr_index].type != PREFETCH_TRANSLATION))
 #endif
+     /////////////////////OTHER CODE WHILE WORKING//////////////////////////////////
                 //   ((CACHE *)upper_level_dcache)->invalidate_entry(MSHR.entry[mshr_index].address);
-                // printf("GOT REQ FOR:: %d\n", cache_type);
+                // printf("---------------------------------------------------\n");
+              //  printf("GOT REQ FOR:: %d\n", cache_type);
             //  if(cache_type==4)
             //  {
             //          invalidate_entry(MSHR.entry[mshr_index].address);//for L1D
@@ -329,20 +332,58 @@ void CACHE::handle_fill()
             //      lower->invalidate_entry(MSHR.entry[mshr_index].address); // LLC
 
             //  }
-            ////////////////////////////////////////////CODE HERE/////////////////////////////////////////////////////////////////
-            ooo_cpu[cpu].L1D.invalidate_entry(MSHR.entry[mshr_index].address); // for L1D
-            // printf("Invalidate at: %d level\n", (CACHE *)ooo_cpu[cpu].L1D.cache_type);
-            CACHE *lower = (CACHE *)ooo_cpu[cpu].L1D.lower_level;
-            // printf("Invalidate at: %d level\n", lower->cache_type);
-            lower->invalidate_entry(MSHR.entry[mshr_index].address); // L2
 
-            CACHE *lower1 = (CACHE *)lower->lower_level;
-            // printf("Invalidate at: %d level\n", lower1->cache_type);
-            lower1->invalidate_entry(MSHR.entry[mshr_index].address); // LLC
+            // ooo_cpu[cpu].L1D.invalidate_entry(MSHR.entry[mshr_index].address); // for L1D
+            // // printf("Invalidate at: %d level\n", (CACHE *)ooo_cpu[cpu].L1D.cache_type);
+            // CACHE *lower = (CACHE *)ooo_cpu[cpu].L1D.lower_level;
+            // // printf("Invalidate at: %d level\n", lower->cache_type);
+            // lower->invalidate_entry(MSHR.entry[mshr_index].address); // L2
 
+            // CACHE *lower1 = (CACHE *)lower->lower_level;
+            // // printf("Invalidate at: %d level\n", lower1->cache_type);
+            // lower1->invalidate_entry(MSHR.entry[mshr_index].address); // LLC
+          //---------------------WORKING-----------------------------------------  
+            //    ooo_cpu[cpu].L1D.invalidate_entry(MSHR.entry[mshr_index].address); // for L1D
+            //    // printf("Invalidate at: %d level\n", (CACHE *)ooo_cpu[cpu].L1D.cache_type);
+            // CACHE *cacheptr=(CACHE *)ooo_cpu[cpu].L1D.lower_level;
+            // while(1)
+            // {
+            //   cacheptr->invalidate_entry(MSHR.entry[mshr_index].address);
+            //  // printf("Invalidate at: %d level\n", cacheptr->cache_type);
+            //   if(cacheptr->cache_type==6)
+            //   break;
+            //   else
+            //   cacheptr=(CACHE *)cacheptr->lower_level;
+            // }
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////WORKING CODE HERE//////////////////////////////////////////////////
+
+      ///////////////INVALIDATING BEFORE FILLING////////////////////////
+            if(cache_type==5)
+            { ooo_cpu[cpu].L1D.invalidate_entry(MSHR.entry[mshr_index].address); // for L1D
+            CACHE *lower=(CACHE *)lower_level;
+            lower->invalidate_entry(MSHR.entry[mshr_index].address);
+            }
+            if(cache_type==4)
+            {
+                CACHE *lower=(CACHE *)lower_level;
+            lower->invalidate_entry(MSHR.entry[mshr_index].address);
+                 CACHE *lower1=(CACHE*)lower->lower_level;
+                 lower1->invalidate_entry(MSHR.entry[mshr_index].address); 
+            }
+            
+    //////////////////INVALIDATION ENDS HERE///////////////////////////// 
+            // if(cache_type==6)
+            // {   CACHE* lowerD=(CACHE *)lower_level;
+            //     printf("DRAM %d",lowerD->cache_type);
+            // }
+           // printf("---------------------------------------------------\n");
+           // printf("Filling at:%d\n",MSHR.entry[mshr_index].fill_l1d);
+          //  printf("FILL LEVEL:%d\n",fill_level);
             fill_cache(set, way, &MSHR.entry[mshr_index]);
 
-            // printf("------------------CHECKING MSHR ADDR-----------------------------\n");
+   ////////////////////////CHEKING EXCLUSIVITY AFTER FILL///////////////////////////
             int wayyy = -1;
             int cntr = 0;
             //                     WQ.entry[index].full_physical_address=.entry[index].full_addr;
@@ -353,7 +394,7 @@ void CACHE::handle_fill()
             //     }
             //         else
             //      printf("MISS at: %d level\n", (CACHE *)ooo_cpu[cpu].L1D.cache_type);
-
+       
             CACHE *lowercheckk = (CACHE *)ooo_cpu[cpu].L1D.lower_level;
             wayyy = lowercheckk->check_hit(&MSHR.entry[mshr_index]);
             if (wayyy >= 0)
@@ -376,7 +417,9 @@ void CACHE::handle_fill()
             if (cntr > 1)
                 assert(0);
             // printf("--------------------------------------------------------\n");
-            ///////////////////////////////////CODE END//////////////////////////////////////////////////
+///////////////////////////////////////WORKING CODE END//////////////////////////////////////////////////
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #ifdef PUSH_DTLB_PB
             else if (cache_type == IS_DTLB && MSHR.entry[mshr_index].type == PREFETCH_TRANSLATION)
@@ -592,10 +635,46 @@ void CACHE::handle_writeback()
         // access cache
         uint32_t set = get_set(WQ.entry[index].address);
         int way = check_hit(&WQ.entry[index]);
+                    int cntr=0;int chk=-1;
+            //////////////////CHECKING FOR EXCLUSIVITY///////////////////
+            // printf("-------------------\n");
+            if( WQ.entry[index].translated==COMPLETED)
+            {
+                // RQ.entry[index].full_physical_address=RQ.entry[index].full_addr;
+                chk=ooo_cpu[cpu].L1D.check_hit(&WQ.entry[index]);
+                
+                if(chk>=0)
+                {  
+                    // printf("HIT AT %d\n",ooo_cpu[cpu].L1D.cache_type);
+                cntr++;
+                }
+             }
+                CACHE*lo=(CACHE *)ooo_cpu[cpu].L1D.lower_level; 
+               
+            while(1)
+             {
+                chk=lo->check_hit(&WQ.entry[index]);
+                if(chk>=0)
+                {
+                cntr++;
+               // printf("HIT AT %d\n",lo->cache_type);
+                }
+                if(lo->cache_type==6)
+                break;
+                else
+                lo=(CACHE*)lo->lower_level;               
+             }
+             if(cntr>1)
+             {
+              //  printf("%d\n",cntr);
+                assert(0);
+             }  
+             // printf("-------------------\n");
+             //////////////////////////////////////////////////////////////////////////
 
         if (way >= 0)
         { // writeback hit (or RFO hit for L1D)
-
+            //www.what
             (this->*update_replacement_state)(writeback_cpu, set, way, block[set][way].full_addr, WQ.entry[index].ip, 0, WQ.entry[index].type, 1);
 
             // COLLECT STATS
@@ -764,7 +843,8 @@ void CACHE::handle_writeback()
                 uint8_t do_fill = 1;
 
                 // is this dirty?
-                if (block[set][way].dirty)
+                //SSSS
+                if (cache_type==IS_L1D||cache_type==IS_L2C || (cache_type==IS_LLC && block[set][way].dirty))
                 {
 
                     // check if the lower level WQ has enough room to keep this writeback request
@@ -798,6 +878,7 @@ void CACHE::handle_writeback()
                             writeback_packet.event_cycle = current_core_cycle[writeback_cpu];
 
                             lower_level->add_wq(&writeback_packet);
+                           
                         }
                     }
 #ifdef SANITY_CHECK
@@ -858,7 +939,7 @@ void CACHE::handle_writeback()
                     // COLLECT STATS
                     sim_miss[writeback_cpu][WQ.entry[index].type]++;
                     sim_access[writeback_cpu][WQ.entry[index].type]++;
-
+////////////////////////////////////OTHER TESTS WHILE WORKING/////////////////////////////////////////////
                     //  ((CACHE *)upper_level_dcache)->invalidate_entry(WQ.entry[index].address);
 
                     //    printf("INVALIDATED AT:%s", upper_level_dcache.cache_type);
@@ -871,7 +952,8 @@ void CACHE::handle_writeback()
                     //     printf("INVALIDATED AT:%s", ((CACHE *)lower_level).cache_type);
                     //     lower_level = lower_level->lower_level;
                     //  }
-                    // printf("GOT REQ FOR:: %d\n", cache_type);
+                  //    printf("---------------------------------------------------\n");
+                  //  printf("GOT REQ FOR:: %d\n", cache_type);
                     // if (cache_type == 4)
                     // {
                     //     invalidate_entry(WQ.entry[index].address); // for L1D
@@ -891,20 +973,48 @@ void CACHE::handle_writeback()
                     //     lower->invalidate_entry(WQ.entry[index].address); // LLC
                     // }
 
-                    ////////////////////////////////////////////////////CODE HERE//////////////////////////////////////////////////////////
-                    ooo_cpu[cpu].L1D.invalidate_entry(WQ.entry[index].address); // for L1D
-                    // printf("Invalidate at: %d level\n", (CACHE *)ooo_cpu[cpu].L1D.cache_type);
-                    CACHE *lower = (CACHE *)ooo_cpu[cpu].L1D.lower_level;
-                    // printf("Invalidate at: %d level\n", lower->cache_type);
-                    lower->invalidate_entry(WQ.entry[index].address); // L2
+                    // ooo_cpu[cpu].L1D.invalidate_entry(WQ.entry[index].address); // for L1D
+                    // // printf("Invalidate at: %d level\n", (CACHE *)ooo_cpu[cpu].L1D.cache_type);
+                    // CACHE *lower = (CACHE *)ooo_cpu[cpu].L1D.lower_level;
+                    // // printf("Invalidate at: %d level\n", lower->cache_type);
+                    // lower->invalidate_entry(WQ.entry[index].address); // L2
 
-                    CACHE *lower1 = (CACHE *)lower->lower_level;
-                    // printf("Invalidate at: %d level\n", lower1->cache_type);
-                    lower1->invalidate_entry(WQ.entry[index].address); // LLC
+                    // CACHE *lower1 = (CACHE *)lower->lower_level;
+                    // // printf("Invalidate at: %d level\n", lower1->cache_type);
+                    // lower1->invalidate_entry(WQ.entry[index].address); // LLC
+     
+            //         ooo_cpu[cpu].L1D.invalidate_entry(WQ.entry[index].address); // for L1D
+            //    // printf("Invalidate at: %d level\n", (CACHE *)ooo_cpu[cpu].L1D.cache_type);
+            //        CACHE *cacheptr1=(CACHE *)ooo_cpu[cpu].L1D.lower_level;
+            //        while(1)
+            //        {
+            //        cacheptr1->invalidate_entry(WQ.entry[index].address);
+            //        // printf("Invalidate at: %d level\n", cacheptr1->cache_type);
+            //       if(cacheptr1->cache_type==6)
+            //       break;
+            //       else
+            //        cacheptr1=(CACHE *)cacheptr1->lower_level;
+            //      }
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////         
+              //-------------------------------WORKING CODE---------------------------------------------------
+  /////////////////////////////////////INVALIDATING///////////////////////////////////////////////
+              if(cache_type==5)
+             {
+                ooo_cpu[cpu].L1D.invalidate_entry(WQ.entry[index].address); // for L1D
+                CACHE*lower=(CACHE*)lower_level;
+                lower->invalidate_entry(WQ.entry[index].address);
+             }
+             if(cache_type==6)
+             {
+                      CACHE *lower = (CACHE *)ooo_cpu[cpu].L1D.lower_level;
+                      lower->invalidate_entry(WQ.entry[index].address); // L2
+             }
+   ////////////////////INVALIDATING CODE END HERE////////////////////////////////////////////////        
+                   
                     fill_cache(set, way, &WQ.entry[index]);
 
-                    // check in entire cache
-                    // printf("------------------CHECKING WQ ADDR-----------------------------\n");
+                    // // check in entire cache
+   ////////////////////CHECKING WQ ADDR for Exlusivity after filling//////////////
                     int wayy = -1;
                     int cntr = 0;
                     //  WQ.entry[index].full_physical_address=WQ.entry[index].full_addr;
@@ -937,9 +1047,9 @@ void CACHE::handle_writeback()
                         // printf("MISS at: %d level\n", lower1check->cache_type);
                     if (cntr > 1)
                         assert(0);
-                    // printf("--------------------------------------------------------\n");
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-                    /////////////////////////////////////////////////CODE END//////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////WORKING CODE END//////////////////////////////////////////////////////////////////
                     // mark dirty
                     block[set][way].dirty = 1;
 
@@ -1314,6 +1424,43 @@ void CACHE::handle_read()
             // access cache
             uint32_t set = get_set(RQ.entry[index].address);
             int way = check_hit(&RQ.entry[index]);
+            int cntr=0;int chk=-1;
+            //////////////////CHECKING FOR EXCLUSIVITY///////////////////
+            // printf("-------------------\n");
+            if( RQ.entry[index].translated==COMPLETED)
+            {
+                // RQ.entry[index].full_physical_address=RQ.entry[index].full_addr;
+                chk=ooo_cpu[cpu].L1D.check_hit(&RQ.entry[index]);
+                
+                if(chk>=0)
+                {  
+                    // printf("HIT AT %d\n",ooo_cpu[cpu].L1D.cache_type);
+                cntr++;
+                }
+             }
+                CACHE*lo=(CACHE *)ooo_cpu[cpu].L1D.lower_level; 
+               
+            while(1)
+             {
+                chk=lo->check_hit(&RQ.entry[index]);
+                if(chk>=0)
+                {
+                cntr++;
+               // printf("HIT AT %d\n",lo->cache_type);
+                }
+                if(lo->cache_type==6)
+                break;
+                else
+                lo=(CACHE*)lo->lower_level;               
+             }
+             if(cntr>1)
+             {
+              //  printf("%d\n",cntr);
+                assert(0);
+             }  
+             // printf("-------------------\n");
+             //////////////////////////////////////////////////////////////////////////
+            
 
             if (way >= 0)
             { // read hit
